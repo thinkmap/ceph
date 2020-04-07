@@ -28,6 +28,7 @@
 
 // re-include our assert to clobber boost's
 #include "include/ceph_assert.h" 
+#include "include/common_fwd.h"
 
 #include "include/types.h"
 #include "include/stringify.h"
@@ -70,7 +71,6 @@ class PG;
 struct OpRequest;
 typedef OpRequest::Ref OpRequestRef;
 class MOSDPGLog;
-class CephContext;
 class DynamicPerfStats;
 
 namespace Scrub {
@@ -400,6 +400,7 @@ public:
   uint64_t get_snap_trimq_size() const override {
     return snap_trimq.size();
   }
+  unsigned get_target_pg_log_entries() const override;
 
   void clear_publish_stats() override;
   void clear_primary_state() override;
@@ -1085,11 +1086,13 @@ protected:
     hobject_t end = info.pgid.pgid.get_hobj_end(pool.info.get_pg_num());
     add_backoff(s, begin, end);
   }
+public:
   void release_pg_backoffs() {
     hobject_t begin = info.pgid.pgid.get_hobj_start();
     hobject_t end = info.pgid.pgid.get_hobj_end(pool.info.get_pg_num());
     release_backoffs(begin, end);
   }
+protected:
 
   // -- scrub --
 public:
@@ -1492,9 +1495,6 @@ protected:
   bool old_peering_msg(epoch_t reply_epoch, epoch_t query_epoch);
   bool old_peering_evt(PGPeeringEventRef evt) {
     return old_peering_msg(evt->get_epoch_sent(), evt->get_epoch_requested());
-  }
-  static bool have_same_or_newer_map(epoch_t cur_epoch, epoch_t e) {
-    return e <= cur_epoch;
   }
   bool have_same_or_newer_map(epoch_t e) {
     return e <= get_osdmap_epoch();

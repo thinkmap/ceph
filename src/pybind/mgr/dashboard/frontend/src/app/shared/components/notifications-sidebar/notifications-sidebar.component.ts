@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   ChangeDetectorRef,
   Component,
+  HostBinding,
   NgZone,
   OnDestroy,
   OnInit
@@ -10,7 +11,7 @@ import {
 import { Mutex } from 'async-mutex';
 import * as _ from 'lodash';
 import * as moment from 'moment';
-import { LocalStorage } from 'ngx-store';
+import { Subscription } from 'rxjs';
 
 import { ExecutingTask } from '../../../shared/models/executing-task';
 import { SummaryService } from '../../../shared/services/summary.service';
@@ -30,16 +31,26 @@ import { PrometheusNotificationService } from '../../services/prometheus-notific
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class NotificationsSidebarComponent implements OnInit, OnDestroy {
+  @HostBinding('class.active') isSidebarOpened = false;
+
   notifications: CdNotification[];
   private interval: number;
+  private timeout: number;
 
   executingTasks: ExecutingTask[] = [];
+
+  private sidebarSubscription: Subscription;
+  private notificationDataSubscription: Subscription;
 
   icons = Icons;
 
   // Tasks
-  @LocalStorage() last_task = '';
+  last_task = '';
   mutex = new Mutex();
+
+  simplebar = {
+    autoHide: false
+  };
 
   constructor(
     public notificationService: NotificationService,
@@ -56,10 +67,20 @@ export class NotificationsSidebarComponent implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     window.clearInterval(this.interval);
+    window.clearTimeout(this.timeout);
+    if (this.sidebarSubscription) {
+      this.sidebarSubscription.unsubscribe();
+    }
+    if (this.notificationDataSubscription) {
+      this.notificationDataSubscription.unsubscribe();
+    }
   }
 
   ngOnInit() {
-    if (this.authStorageService.getPermissions().prometheus.read) {
+    this.last_task = window.localStorage.getItem('last_task');
+
+    const permissions = this.authStorageService.getPermissions();
+    if (permissions.prometheus.read && permissions.configOpt.read) {
       this.triggerPrometheusAlerts();
       this.ngZone.runOutsideAngular(() => {
         this.interval = window.setInterval(() => {
@@ -70,9 +91,24 @@ export class NotificationsSidebarComponent implements OnInit, OnDestroy {
       });
     }
 
-    this.notificationService.data$.subscribe((notifications: CdNotification[]) => {
-      this.notifications = _.orderBy(notifications, ['timestamp'], ['desc']);
-      this.cdRef.detectChanges();
+    this.notificationDataSubscription = this.notificationService.data$.subscribe(
+      (notifications: CdNotification[]) => {
+        this.notifications = _.orderBy(notifications, ['timestamp'], ['desc']);
+        this.cdRef.detectChanges();
+      }
+    );
+
+    this.sidebarSubscription = this.notificationService.sidebarSubject.subscribe((forceClose) => {
+      if (forceClose) {
+        this.isSidebarOpened = false;
+      } else {
+        this.isSidebarOpened = !this.isSidebarOpened;
+      }
+
+      window.clearTimeout(this.timeout);
+      this.timeout = window.setTimeout(() => {
+        this.cdRef.detectChanges();
+      }, 0);
     });
 
     this.summaryService.subscribe((data: any) => {
@@ -93,6 +129,7 @@ export class NotificationsSidebarComponent implements OnInit, OnDestroy {
 
           if (!this.last_task || moment(task.end_time).isAfter(this.last_task)) {
             this.last_task = task.end_time;
+            window.localStorage.setItem('last_task', this.last_task);
           }
 
           this.notificationService.save(notification);
@@ -121,11 +158,15 @@ export class NotificationsSidebarComponent implements OnInit, OnDestroy {
     this.notificationService.removeAll();
   }
 
-  closeSidebar() {
-    this.notificationService.toggleSidebar(true);
+  remove(index: number) {
+    this.notificationService.remove(index);
   }
 
-  trackByFn(index) {
+  closeSidebar() {
+    this.isSidebarOpened = false;
+  }
+
+  trackByFn(index: number) {
     return index;
   }
 }

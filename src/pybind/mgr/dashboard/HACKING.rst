@@ -3,6 +3,187 @@ Ceph Dashboard Developer Documentation
 
 .. contents:: Table of Contents
 
+Preliminary Steps
+-----------------
+
+The following documentation chapters expect a running Ceph cluster and at
+least a running ``dashboard`` manager module (with few exceptions). This
+chapter gives an introduction on how to set up such a system for development,
+without the need to set up a full-blown production environment. All options
+introduced in this chapter are based on a so called ``vstart`` environment.
+
+.. note::
+
+  Every ``vstart`` environment needs Ceph `to be compiled`_ from its Github
+  repository, though Docker environments simplify that step by providing a
+  shell script that contains those instructions.
+
+  One exception to this rule are the `build-free`_ capabilities of
+  `ceph-dev`_. See below for more information.
+
+.. _to be compiled: https://docs.ceph.com/docs/master/install/build-ceph/
+
+vstart
+~~~~~~
+
+"vstart" is actually a shell script in the ``src/`` directory of the Ceph
+repository (``src/vstart.sh``). It is used to start a single node Ceph
+cluster on the machine where it is executed. Several required and some
+optional Ceph internal services are started automatically when it is used to
+start a Ceph cluster. vstart is the basis for the three most commonly used
+development environments in Ceph Dashboard.
+
+You can read more about vstart in `Deploying a development cluster`_.
+Additional information for developers can also be found in the `Developer
+Guide`_.
+
+.. _Deploying a development cluster: https://docs.ceph.com/docs/master/dev/dev_cluster_deployement/
+.. _Developer Guide: https://docs.ceph.com/docs/master/dev/quick_guide/
+
+Host-based vs Docker-based Development Environments
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This document introduces you to three different development environments, all
+based on vstart. Those are:
+
+- vstart running on your host system
+
+- vstart running in a Docker environment
+
+  * ceph-dev-docker_
+  * ceph-dev_
+
+  Besides their independent development branches and sometimes slightly
+  different approaches, they also differ with respect to their underlying
+  operating systems.
+
+  ========= ======================  ========
+  Release   ceph-dev-docker         ceph-dev
+  ========= ======================  ========
+  Mimic     openSUSE Leap 15        CentOS 7
+  Nautilus  openSUSE Leap 15        CentOS 7
+  Octopus   openSUSE Leap 15.2      CentOS 8
+  --------- ----------------------  --------
+  Master    openSUSE Tumbleweed     CentOS 8
+  ========= ======================  ========
+
+.. note::
+
+  Independently of which of these environments you will choose, you need to
+  compile Ceph in that environment. If you compiled Ceph on your host system,
+  you would have to recompile it on Docker to be able to switch to a Docker
+  based solution. The same is true vice versa. If you previously used a
+  Docker development environment and compiled Ceph there and you now want to
+  switch to your host system, you will also need to recompile Ceph (or
+  compile Ceph using another separate repository).
+
+  `ceph-dev`_ is an exception to this rule as one of the options it provides
+  is `build-free`_. This is accomplished through a Ceph installation using
+  RPM system packages. You will still be able to work with a local Github
+  repository like you are used to.
+
+
+Development environment on your host system
+...........................................
+
+- No need to learn or have experience with Docker, jump in right away.
+
+- Limited amount of scripts to support automation (like Ceph compilation).
+
+- No pre-configured easy-to-start services (Prometheus, Grafana, etc).
+
+- Limited amount of host operating systems supported, depending on which
+  Ceph version is supposed to be used.
+
+- Dependencies need to be installed on your host.
+
+- You might find yourself in the situation where you need to upgrade your
+  host operating system (for instance due to a change of the GCC version used
+  to compile Ceph).
+
+
+Development environments based on Docker
+........................................
+
+- Some overhead in learning Docker if you are not used to it yet.
+
+- Both Docker projects provide you with scripts that help you getting started
+  and automate recurring tasks.
+
+- Both Docker environments come with partly pre-configured external services
+  which can be used to attach to or complement Ceph Dashboard features, like
+
+  - Prometheus
+  - Grafana
+  - Node-Exporter
+  - Shibboleth
+  - HAProxy
+
+- Works independently of the operating system you use on your host.
+
+
+.. _build-free: https://github.com/rhcs-dashboard/ceph-dev#quick-install-rpm-based
+
+vstart on your host system
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The vstart script is usually called from your `build/` directory like so:
+
+.. code::
+
+  ../src/vstart.sh -n -d
+
+In this case ``-n`` ensures that a new vstart cluster is created and that a
+possibly previously created cluster isn't re-used. ``-d`` enables debug
+messages in log files. There are several more options to chose from. You can
+get a list using the ``--help`` argument.
+
+At the end of the output of vstart, there should be information about the 
+dashboard and its URLs::
+
+  vstart cluster complete. Use stop.sh to stop. See out/* (e.g. 'tail -f out/????') for debug output.
+
+  dashboard urls: https://192.168.178.84:41259, https://192.168.178.84:43259, https://192.168.178.84:45259
+    w/ user/pass: admin / admin
+  restful urls: https://192.168.178.84:42259, https://192.168.178.84:44259, https://192.168.178.84:46259
+    w/ user/pass: admin / 598da51f-8cd1-4161-a970-b2944d5ad200
+
+During development (especially in backend development), you also want to
+check on occasions if the dashboard manager module is still running. To do so
+you can call `./bin/ceph mgr services` manually. It will list all the URLs of
+successfully enabled services. Only URLs of services which are available over
+HTTP(S) will be listed there. Ceph Dashboard is one of these services. It
+should look similar to the following output:
+
+.. code::
+
+  $ ./bin/ceph mgr services
+  {
+      "dashboard": "https://home:41931/",
+      "restful": "https://home:42931/"
+  }
+
+By default, this environment uses a randomly chosen port for Ceph Dashboard
+and you need to use this command to find out which one it has become.
+
+Docker
+~~~~~~
+
+Docker development environments usually ship with a lot of useful scripts.
+``ceph-dev-docker`` for instance contains a file called `start-ceph.sh`,
+which cleans up log files, always starts a Rados Gateway service, sets some
+Ceph Dashboard configuration options and automatically runs a frontend proxy,
+all before or after starting up your vstart cluster.
+
+Instructions on how to use those environments are contained in their
+respective repository README files.
+
+- ceph-dev-docker_
+- ceph-dev_
+
+.. _ceph-dev-docker: https://github.com/ricardoasmarques/ceph-dev-docker
+.. _ceph-dev: https://github.com/rhcs-dashboard/ceph-dev
+
 Frontend Development
 --------------------
 
@@ -162,9 +343,9 @@ Device:
 
 Remote:
   If you want to run the tests outside the ceph environment, you will need to
-  manually define the dashboard url using ``-r``::
+  manually define the dashboard url using ``-r`` and, optionally, credentials (``-u``, ``-p``)::
 
-    $ ./run-frontend-e2e-tests.sh -r <DASHBOARD_URL>
+    $ ./run-frontend-e2e-tests.sh -r <DASHBOARD_URL> -u <E2E_LOGIN_USER> -p <E2E_LOGIN_PWD>
 
 Note:
   When using docker, as your device, you might need to run the script with sudo
@@ -331,6 +512,91 @@ and written so long as "it" can be the prefix of the message. For example, ``it(
 vs. ``it('image edit test' () => ...)``. As shown, the first example makes grammatical sense with ``it()`` as the
 prefix whereas the second message does not.``it()`` should describe what the individual test is doing and
 what it expects to happen.
+
+Differences between Frontend Unit Tests and End-to-End (E2E) Tests / FAQ
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+General introduction about testing and E2E/unit tests 
+
+
+What are E2E/unit tests designed for?
+.....................................
+
+E2E test:
+
+"Protractor is an end-to-end test framework for Angular and AngularJS applications.
+Protractor runs tests against your application running in a real browser,
+interacting with it as a user would." `(src) <http://www.protractortest.org/#/>`__
+
+It requires a fully functional system and tests the interaction of all components
+of the application (Ceph, back-end, front-end).
+E2E tests are designed to mimic the behavior of the user when interacting with the application
+- for example when it comes to workflows like creating/editing/deleting an item.
+Also the tests should verify that certain items are displayed as a user would see them
+when clicking through the UI (for example a menu entry or a pool that has been
+created during a test and the pool and its properties should be displayed in the table).
+
+Angular Unit Tests:
+
+Unit tests, as the name suggests, are tests for smaller units of the code.
+Those tests are designed for testing all kinds of Angulars' components (e.g. services, pipes etc.).
+They do not require a connection to the backend, hence those tests are independent of it.
+The expected data of the backend is mocked in the frontend and by using this data
+the functionality of the frontend can be tested without having to have real data from the backend.
+As previously mentioned, data is either mocked or, in a simple case, contains a static input,
+a function call and an expected static output.
+More complex examples include the state of a component (attributes of the component class),
+that define how the output changes according to the given input.
+
+Which E2E/unit tests are considered to be valid?
+................................................
+
+This is not easy to answer, but new tests that are written in the same way as already existing
+dashboard tests should generally be considered valid.
+Unit tests should focus on the component to be tested.
+This is either an Angular component, directive, service, pipe, etc.
+
+E2E tests should focus on testing the functionality of the whole application.
+Approximately a third of the overall E2E tests should verify the correctness
+of user visible elements.
+
+How should an E2E/unit test look like?
+......................................
+
+Unit tests should focus on the described purpose
+and shouldn't try to test other things in the same `it` block.
+
+E2E tests should contain a description that either verifies
+the correctness of a user visible element or a complete process
+like for example the creation/validation/deletion of a pool.
+
+What should an E2E/unit test cover?
+...................................
+
+E2E tests should mostly, but not exclusively, cover interaction with the backend.
+This way the interaction with the backend is utilized to write integration tests.
+
+A unit test should mostly cover critical or complex functionality
+of a component (Angular Components, Services, Pipes, Directives, etc).
+
+What should an E2E/unit test NOT cover?
+.......................................
+
+Avoid duplicate testing: do not write E2E tests for what's already
+been covered as frontend-unit tests and vice versa.
+It may not be possible to completely avoid an overlap.
+
+Unit tests should not be used to extensively click through components and E2E tests
+shouldn't be used to extensively test a single component of Angular.
+
+Best practices/guideline
+........................
+
+As a general guideline we try to follow the 70/20/10 approach - 70% unit tests,
+20% integration tests and 10% end-to-end tests.
+For further information please refer to `this document
+<https://testing.googleblog.com/2015/04/just-say-no-to-more-end-to-end-tests.html>`__
+and the included "Testing Pyramid".
 
 Further Help
 ~~~~~~~~~~~~
@@ -656,7 +922,7 @@ To run the tests, run ``src/script/run_tox.sh`` in the dashboard directory (wher
   $ ../../../script/run_tox.sh --tox-env py3,lint,check
 
   ## Run Python 3 arbitrary command (e.g. 1 single test):
-  $ WITH_PYTHON2=OFF ../../../script/run_tox.sh --tox-env py3 "" tests/test_rgw_client.py::RgwClientTest::test_ssl_verify
+  $ ../../../script/run_tox.sh --tox-env py3 "" tests/test_rgw_client.py::RgwClientTest::test_ssl_verify
 
 You can also run tox instead of ``run_tox.sh``::
 
@@ -1090,16 +1356,18 @@ How to access the manager module instance from a controller?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 We provide the manager module instance as a global variable that can be
-imported in any module. We also provide a logger instance in the same way.
+imported in any module.
 
 Example:
 
 .. code-block:: python
 
+  import logging
   import cherrypy
-  from .. import logger, mgr
+  from .. import mgr
   from ..tools import ApiController, RESTController
 
+  logger = logging.getLogger(__name__)
 
   @ApiController('servers')
   class Servers(RESTController):
@@ -1855,7 +2123,6 @@ In order to create a new plugin, the following steps are required:
 The available Mixins (helpers) are:
 
 - ``CanMgr``: provides the plug-in with access to the ``mgr`` instance under ``self.mgr``.
-- ``CanLog``: provides the plug-in with access to the Ceph Dashboard logger under ``self.log``.
 
 The available Interfaces are:
 
@@ -1898,9 +2165,8 @@ A sample plugin implementation would look like this:
   import cherrypy
 
   @PM.add_plugin
-  class Mute(I.CanMgr, I.CanLog, I.Setupable, I.HasOptions,
-                       I.HasCommands, I.FilterRequest.BeforeHandler,
-                       I.HasControllers):
+  class Mute(I.CanMgr, I.Setupable, I.HasOptions, I.HasCommands,
+                       I.FilterRequest.BeforeHandler, I.HasControllers):
     @PM.add_hook
     def get_options(self):
       return [Option('mute', default=False, type='bool')]
@@ -1939,7 +2205,7 @@ facilitates the basic tasks (Options, Commands, and common Mixins). The previous
 plugin could be rewritten like this:
 
 .. code-block:: python
-  
+
   from . import PLUGIN_MANAGER as PM
   from . import interfaces as I
   from .plugin import SimplePlugin as SP

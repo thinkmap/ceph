@@ -6,6 +6,7 @@
 #include "common/Timer.h"
 #include "common/debug.h"
 #include "common/errno.h"
+#include "common/WorkQueue.h"
 #include "librbd/Utils.h"
 #include "ImageReplayer.h"
 #include "InstanceReplayer.h"
@@ -36,10 +37,14 @@ template <typename I>
 InstanceReplayer<I>::InstanceReplayer(
     librados::IoCtx &local_io_ctx, const std::string &local_mirror_uuid,
     Threads<I> *threads, ServiceDaemon<I>* service_daemon,
-    journal::CacheManagerHandler *cache_manager_handler)
+    MirrorStatusUpdater<I>* local_status_updater,
+    journal::CacheManagerHandler *cache_manager_handler,
+    PoolMetaCache* pool_meta_cache)
   : m_local_io_ctx(local_io_ctx), m_local_mirror_uuid(local_mirror_uuid),
     m_threads(threads), m_service_daemon(service_daemon),
+    m_local_status_updater(local_status_updater),
     m_cache_manager_handler(cache_manager_handler),
+    m_pool_meta_cache(pool_meta_cache),
     m_lock(ceph::make_mutex("rbd::mirror::InstanceReplayer " +
         stringify(local_io_ctx.get_id()))) {
 }
@@ -49,6 +54,12 @@ InstanceReplayer<I>::~InstanceReplayer() {
   ceph_assert(m_image_state_check_task == nullptr);
   ceph_assert(m_async_op_tracker.empty());
   ceph_assert(m_image_replayers.empty());
+}
+
+template <typename I>
+bool InstanceReplayer<I>::is_blacklisted() const {
+  std::lock_guard locker{m_lock};
+  return m_blacklisted;
 }
 
 template <typename I>
@@ -101,12 +112,11 @@ void InstanceReplayer<I>::shut_down(Context *on_finish) {
 }
 
 template <typename I>
-void InstanceReplayer<I>::add_peer(std::string peer_uuid,
-                                   librados::IoCtx io_ctx) {
-  dout(10) << peer_uuid << dendl;
+void InstanceReplayer<I>::add_peer(const Peer<I>& peer) {
+  dout(10) << "peer=" << peer << dendl;
 
   std::lock_guard locker{m_lock};
-  auto result = m_peers.insert(Peer(peer_uuid, io_ctx)).second;
+  auto result = m_peers.insert(peer).second;
   ceph_assert(result);
 }
 
@@ -145,7 +155,8 @@ void InstanceReplayer<I>::acquire_image(InstanceWatcher<I> *instance_watcher,
   if (it == m_image_replayers.end()) {
     auto image_replayer = ImageReplayer<I>::create(
         m_local_io_ctx, m_local_mirror_uuid, global_image_id,
-        m_threads, instance_watcher, m_cache_manager_handler);
+        m_threads, instance_watcher, m_local_status_updater,
+        m_cache_manager_handler, m_pool_meta_cache);
 
     dout(10) << global_image_id << ": creating replayer " << image_replayer
              << dendl;
@@ -156,7 +167,7 @@ void InstanceReplayer<I>::acquire_image(InstanceWatcher<I> *instance_watcher,
     // TODO only a single peer is currently supported
     ceph_assert(m_peers.size() == 1);
     auto peer = *m_peers.begin();
-    image_replayer->add_peer(peer.peer_uuid, peer.io_ctx);
+    image_replayer->add_peer(peer);
     start_image_replayer(image_replayer);
   } else {
     // A duplicate acquire notification implies (1) connection hiccup or
@@ -322,6 +333,7 @@ void InstanceReplayer<I>::start_image_replayer(
   } else if (image_replayer->is_blacklisted()) {
     derr << "global_image_id=" << global_image_id << ": blacklisted detected "
          << "during image replay" << dendl;
+    m_blacklisted = true;
     return;
   } else if (image_replayer->is_finished()) {
     // TODO temporary until policy integrated
@@ -376,15 +388,15 @@ void InstanceReplayer<I>::start_image_replayers(int r) {
     start_image_replayer(current_it->second);
   }
 
-  // TODO: add namespace support to service daemon
-  if (m_local_io_ctx.get_namespace().empty()) {
-    m_service_daemon->add_or_update_attribute(
-      m_local_io_ctx.get_id(), SERVICE_DAEMON_ASSIGNED_COUNT_KEY, image_count);
-    m_service_daemon->add_or_update_attribute(
-      m_local_io_ctx.get_id(), SERVICE_DAEMON_WARNING_COUNT_KEY, warning_count);
-    m_service_daemon->add_or_update_attribute(
-      m_local_io_ctx.get_id(), SERVICE_DAEMON_ERROR_COUNT_KEY, error_count);
-  }
+  m_service_daemon->add_or_update_namespace_attribute(
+    m_local_io_ctx.get_id(), m_local_io_ctx.get_namespace(),
+    SERVICE_DAEMON_ASSIGNED_COUNT_KEY, image_count);
+  m_service_daemon->add_or_update_namespace_attribute(
+    m_local_io_ctx.get_id(), m_local_io_ctx.get_namespace(),
+    SERVICE_DAEMON_WARNING_COUNT_KEY, warning_count);
+  m_service_daemon->add_or_update_namespace_attribute(
+    m_local_io_ctx.get_id(), m_local_io_ctx.get_namespace(),
+    SERVICE_DAEMON_ERROR_COUNT_KEY, error_count);
 
   m_async_op_tracker.finish_op();
 }

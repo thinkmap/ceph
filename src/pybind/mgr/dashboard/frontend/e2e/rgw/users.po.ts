@@ -2,15 +2,16 @@ import { $, by, element } from 'protractor';
 import { protractor } from 'protractor/built/ptor';
 import { PageHelper } from '../page-helper.po';
 
+const pages = {
+  index: '/#/rgw/user',
+  create: '/#/rgw/user/create'
+};
+
 export class UsersPageHelper extends PageHelper {
-  pages = {
-    index: '/#/rgw/user',
-    create: '/#/rgw/user/create'
-  };
+  pages = pages;
 
-  async create(username, fullname, email, maxbuckets) {
-    await this.navigateTo('create');
-
+  @PageHelper.restrictTo(pages.create)
+  async create(username: string, fullname: string, email: string, maxbuckets: string) {
     // Enter in  username
     await element(by.id('uid')).sendKeys(username);
 
@@ -23,6 +24,7 @@ export class UsersPageHelper extends PageHelper {
     await element(by.id('email')).sendKeys(email);
 
     // Enter max buckets
+    await this.selectOption('max_buckets_mode', 'Custom');
     await element(by.id('max_buckets')).click();
     await element(by.id('max_buckets')).clear();
     await element(by.id('max_buckets')).sendKeys(maxbuckets);
@@ -32,9 +34,8 @@ export class UsersPageHelper extends PageHelper {
     await this.waitPresence(this.getFirstTableCellWithText(username));
   }
 
-  async edit(name, new_fullname, new_email, new_maxbuckets) {
-    await this.navigateTo();
-
+  @PageHelper.restrictTo(pages.index)
+  async edit(name: string, new_fullname: string, new_email: string, new_maxbuckets: string) {
     await this.waitClickableAndClick(this.getFirstTableCellWithText(name)); // wait for table to load and click
     await element(by.cssContainingText('button', 'Edit')).click(); // click button to move to edit page
 
@@ -51,6 +52,7 @@ export class UsersPageHelper extends PageHelper {
     await element(by.id('email')).sendKeys(new_email);
 
     // Change the max buckets field
+    await this.selectOption('max_buckets_mode', 'Custom');
     await element(by.id('max_buckets')).click();
     await element(by.id('max_buckets')).clear();
     await element(by.id('max_buckets')).sendKeys(new_maxbuckets);
@@ -67,6 +69,7 @@ export class UsersPageHelper extends PageHelper {
   async invalidCreate() {
     const uname = '000invalid_create_user';
     // creating this user in order to check that you can't give two users the same name
+    await this.navigateTo('create');
     await this.create(uname, 'xxx', 'xxx@xxx', '1');
 
     await this.navigateTo('create');
@@ -86,6 +89,7 @@ export class UsersPageHelper extends PageHelper {
     );
 
     // check that username field is marked invalid if username has been cleared off
+    await username_field.click();
     for (let i = 0; i < uname.length; i++) {
       await username_field.sendKeys(protractor.Key.BACK_SPACE);
     }
@@ -118,13 +122,14 @@ export class UsersPageHelper extends PageHelper {
     );
 
     // put negative max buckets to make field invalid
+    await this.expectSelectOption('max_buckets_mode', 'Custom');
     await element(by.id('max_buckets')).click();
     await element(by.id('max_buckets')).clear();
     await element(by.id('max_buckets')).sendKeys('-5');
     await expect(element(by.id('max_buckets')).getAttribute('class')).toContain('ng-invalid');
     await username_field.click(); // trigger validation check
     await expect(element(by.css('#max_buckets + .invalid-feedback')).getText()).toMatch(
-      'The entered value must be >= 0.'
+      'The entered value must be >= 1.'
     );
 
     await this.navigateTo();
@@ -134,6 +139,7 @@ export class UsersPageHelper extends PageHelper {
   async invalidEdit() {
     const uname = '000invalid_edit_user';
     // creating this user to edit for the test
+    await this.navigateTo('create');
     await this.create(uname, 'xxx', 'xxx@xxx', '1');
 
     await this.navigateTo();
@@ -169,13 +175,14 @@ export class UsersPageHelper extends PageHelper {
     );
 
     // put negative max buckets to make field invalid
+    await this.expectSelectOption('max_buckets_mode', 'Custom');
     await element(by.id('max_buckets')).click();
     await element(by.id('max_buckets')).clear();
     await element(by.id('max_buckets')).sendKeys('-5');
     await expect(element(by.id('max_buckets')).getAttribute('class')).toContain('ng-invalid');
     await element(by.id('email')).click(); // trigger validation check
     await expect(element(by.css('#max_buckets + .invalid-feedback')).getText()).toMatch(
-      'The entered value must be >= 0.'
+      'The entered value must be >= 1.'
     );
 
     await this.navigateTo();

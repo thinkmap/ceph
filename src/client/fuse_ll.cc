@@ -941,7 +941,7 @@ static int remount_cb(void *handle)
   // trims all unused dentries in the file system
   char cmd[128+PATH_MAX];
   CephFuse::Handle *cfuse = (CephFuse::Handle *)handle;
-  snprintf(cmd, sizeof(cmd), "mount -i -o remount %s", cfuse->mountpoint);
+  snprintf(cmd, sizeof(cmd), "LIBMOUNT_FSTAB=/dev/null mount -i -o remount %s", cfuse->mountpoint);
   int r = system(cmd);
   if (r != 0 && r != -1) {
     r = WEXITSTATUS(r);
@@ -956,9 +956,7 @@ static void do_init(void *data, fuse_conn_info *conn)
   Client *client = cfuse->client;
 
 #if !defined(__APPLE__)
-  auto fuse_default_permissions = client->cct->_conf.get_val<bool>(
-    "fuse_default_permissions");
-  if (!fuse_default_permissions && client->ll_handle_umask()) {
+  if (!client->fuse_default_permissions && client->ll_handle_umask()) {
     // apply umask in userspace if posix acl is enabled
     if(conn->capable & FUSE_CAP_DONT_MASK)
       conn->want |= FUSE_CAP_DONT_MASK;

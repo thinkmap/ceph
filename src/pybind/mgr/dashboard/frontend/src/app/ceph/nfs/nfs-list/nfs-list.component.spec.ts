@@ -1,5 +1,6 @@
 import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
 import { ComponentFixture, fakeAsync, TestBed, tick } from '@angular/core/testing';
+import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { RouterTestingModule } from '@angular/router/testing';
 
 import { TabsModule } from 'ngx-bootstrap/tabs';
@@ -28,7 +29,7 @@ describe('NfsListComponent', () => {
   let nfsService: NfsService;
   let httpTesting: HttpTestingController;
 
-  const refresh = (data) => {
+  const refresh = (data: object) => {
     summaryService['summaryDataSource'].next(data);
   };
 
@@ -36,6 +37,7 @@ describe('NfsListComponent', () => {
     {
       declarations: [NfsListComponent, NfsDetailsComponent],
       imports: [
+        BrowserAnimationsModule,
         HttpClientTestingModule,
         RouterTestingModule,
         SharedModule,
@@ -96,7 +98,7 @@ describe('NfsListComponent', () => {
   describe('handling of executing tasks', () => {
     let exports: any[];
 
-    const addExport = (export_id) => {
+    const addExport = (export_id: string) => {
       const model = {
         export_id: export_id,
         path: 'path_' + export_id,

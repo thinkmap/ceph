@@ -71,7 +71,12 @@ export class RgwUserListComponent {
       {
         name: this.i18n('Max. buckets'),
         prop: 'max_buckets',
-        flexGrow: 1
+        flexGrow: 1,
+        cellTransformation: CellTemplate.map,
+        customTemplateConfig: {
+          '-1': this.i18n('Disabled'),
+          0: this.i18n('Unlimited')
+        }
       }
     ];
     const getUserUri = () =>
@@ -80,7 +85,8 @@ export class RgwUserListComponent {
       permission: 'create',
       icon: Icons.add,
       routerLink: () => this.urlBuilder.getCreate(),
-      name: this.actionLabels.CREATE
+      name: this.actionLabels.CREATE,
+      canBePrimary: (selection: CdTableSelection) => !selection.hasSelection
     };
     const editAction: CdTableAction = {
       permission: 'update',
@@ -92,7 +98,9 @@ export class RgwUserListComponent {
       permission: 'delete',
       icon: Icons.destroy,
       click: () => this.deleteAction(),
-      name: this.actionLabels.DELETE
+      disable: () => !this.selection.hasSelection,
+      name: this.actionLabels.DELETE,
+      canBePrimary: (selection: CdTableSelection) => selection.hasMultiSelection
     };
     this.tableActions = [addAction, editAction, deleteAction];
   }

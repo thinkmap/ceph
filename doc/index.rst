@@ -92,10 +92,8 @@ about Ceph, see our `Architecture`_ section.
    :hidden:
 
    start/intro
-   bootstrap
-   start/index
    install/index
-   start/kube-helm
+   cephadm/index
    rados/index
    cephfs/index
    rbd/index
@@ -107,6 +105,8 @@ about Ceph, see our `Architecture`_ section.
    Developer Guide <dev/developer_guide/index>
    dev/internals
    governance
+   foundation
    ceph-volume/index
+   releases/general
    releases/index
    Glossary <glossary>

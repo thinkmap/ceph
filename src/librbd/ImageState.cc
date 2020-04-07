@@ -302,9 +302,18 @@ void ImageState<I>::handle_update_notification() {
   ldout(cct, 20) << __func__ << ": refresh_seq = " << m_refresh_seq << ", "
 		 << "last_refresh = " << m_last_refresh << dendl;
 
-  if (m_state == STATE_OPEN) {
-    m_update_watchers->notify();
+  switch (m_state) {
+  case STATE_UNINITIALIZED:
+  case STATE_CLOSED:
+  case STATE_OPENING:
+  case STATE_CLOSING:
+    ldout(cct, 5) << "dropping update notification to watchers" << dendl;
+    return;
+  default:
+    break;
   }
+
+  m_update_watchers->notify();
 }
 
 template <typename I>
@@ -435,12 +444,18 @@ int ImageState<I>::register_update_watcher(UpdateWatchCtx *watcher,
 }
 
 template <typename I>
-int ImageState<I>::unregister_update_watcher(uint64_t handle) {
+void ImageState<I>::unregister_update_watcher(uint64_t handle,
+                                              Context *on_finish) {
   CephContext *cct = m_image_ctx->cct;
   ldout(cct, 20) << __func__ << ": handle=" << handle << dendl;
 
+  m_update_watchers->unregister_watcher(handle, on_finish);
+}
+
+template <typename I>
+int ImageState<I>::unregister_update_watcher(uint64_t handle) {
   C_SaferCond ctx;
-  m_update_watchers->unregister_watcher(handle, &ctx);
+  unregister_update_watcher(handle, &ctx);
   return ctx.wait();
 }
 

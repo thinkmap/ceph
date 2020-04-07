@@ -1,6 +1,7 @@
 import { HttpClientTestingModule } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 
 import * as _ from 'lodash';
 import { TabsModule } from 'ngx-bootstrap/tabs';
@@ -14,11 +15,11 @@ describe('NfsDetailsComponent', () => {
   let component: NfsDetailsComponent;
   let fixture: ComponentFixture<NfsDetailsComponent>;
 
-  const elem = (css) => fixture.debugElement.query(By.css(css));
+  const elem = (css: string) => fixture.debugElement.query(By.css(css));
 
   configureTestBed({
     declarations: [NfsDetailsComponent],
-    imports: [SharedModule, TabsModule.forRoot(), HttpClientTestingModule],
+    imports: [BrowserAnimationsModule, SharedModule, TabsModule.forRoot(), HttpClientTestingModule],
     providers: i18nProviders
   });
 
@@ -51,7 +52,6 @@ describe('NfsDetailsComponent', () => {
         state: 'LOADING'
       }
     ];
-    component.selection.update();
     component.ngOnChanges();
     fixture.detectChanges();
   });
@@ -85,7 +85,6 @@ describe('NfsDetailsComponent', () => {
       }
     });
     component.selection.selected = [newData];
-    component.selection.update();
     component.ngOnChanges();
     expect(component.data).toEqual({
       'Access Type': 'RW',

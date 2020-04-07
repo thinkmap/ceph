@@ -209,15 +209,15 @@ The OSD can be removed from the CRUSH hierarchy with::
 OSD_OUT_OF_ORDER_FULL
 _____________________
 
-The utilization thresholds for `backfillfull`, `nearfull`, `full`,
+The utilization thresholds for `nearfull`, `backfillfull`, `full`,
 and/or `failsafe_full` are not ascending.  In particular, we expect
-`backfillfull < nearfull`, `nearfull < full`, and `full <
+`nearfull < backfillfull`, `backfillfull < full`, and `full <
 failsafe_full`.
 
 The thresholds can be adjusted with::
 
-  ceph osd set-backfillfull-ratio <ratio>
   ceph osd set-nearfull-ratio <ratio>
+  ceph osd set-backfillfull-ratio <ratio>
   ceph osd set-full-ratio <ratio>
 
 
@@ -833,21 +833,6 @@ recommended amount with::
 Please refer to :ref:`choosing-number-of-placement-groups` and
 :ref:`pg-autoscaler` for more information.
 
-POOL_TARGET_SIZE_RATIO_OVERCOMMITTED
-____________________________________
-
-One or more pools have a ``target_size_ratio`` property set to
-estimate the expected size of the pool as a fraction of total storage,
-but the value(s) exceed the total available storage (either by
-themselves or in combination with other pools' actual usage).
-
-This is usually an indication that the ``target_size_ratio`` value for
-the pool is too large and should be reduced or set to zero with::
-
-  ceph osd pool set <pool-name> target_size_ratio 0
-
-For more information, see :ref:`specifying_pool_target_size`.
-
 POOL_TARGET_SIZE_BYTES_OVERCOMMITTED
 ____________________________________
 
@@ -858,6 +843,21 @@ themselves or in combination with other pools' actual usage).
 
 This is usually an indication that the ``target_size_bytes`` value for
 the pool is too large and should be reduced or set to zero with::
+
+  ceph osd pool set <pool-name> target_size_bytes 0
+
+For more information, see :ref:`specifying_pool_target_size`.
+
+POOL_HAS_TARGET_SIZE_BYTES_AND_RATIO
+____________________________________
+
+One or more pools have both ``target_size_bytes`` and
+``target_size_ratio`` set to estimate the expected size of the pool.
+Only one of these properties should be non-zero. If both are set,
+``target_size_ratio`` takes precedence and ``target_size_bytes`` is
+ignored.
+
+To reset ``target_size_bytes`` to zero::
 
   ceph osd pool set <pool-name> target_size_bytes 0
 

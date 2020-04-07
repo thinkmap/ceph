@@ -29,8 +29,6 @@ Synopsis
 
 | **ceph** **health** *{detail}*
 
-| **ceph** **heap** [ *dump* \| *start_profiler* \| *stop_profiler* \| *release* \| *get_release_rate* \| *set_release_rate* \| *stats* ] ...
-
 | **ceph** **injectargs** *<injectedargs>* [ *<injectedargs>*... ]
 
 | **ceph** **log** *<logtext>* [ *<logtext>*... ]
@@ -38,8 +36,6 @@ Synopsis
 | **ceph** **mds** [ *compat* \| *fail* \| *rm* \| *rmfailed* \| *set_state* \| *stat* \| *repaired* ] ...
 
 | **ceph** **mon** [ *add* \| *dump* \| *getmap* \| *remove* \| *stat* ] ...
-
-| **ceph** **mon_status**
 
 | **ceph** **osd** [ *blacklist* \| *blocked-by* \| *create* \| *new* \| *deep-scrub* \| *df* \| *down* \| *dump* \| *erasure-code-profile* \| *find* \| *getcrushmap* \| *getmap* \| *getmaxosd* \| *in* \| *ls* \| *lspools* \| *map* \| *metadata* \| *ok-to-stop* \| *out* \| *pause* \| *perf* \| *pg-temp* \| *force-create-pg* \| *primary-affinity* \| *primary-temp* \| *repair* \| *reweight* \| *reweight-by-pg* \| *rm* \| *destroy* \| *purge* \| *safe-to-destroy* \| *scrub* \| *set* \| *setcrushmap* \| *setmaxosd*  \| *stat* \| *tree* \| *unpause* \| *unset* ] ...
 
@@ -53,13 +49,9 @@ Synopsis
 
 | **ceph** **pg** [ *debug* \| *deep-scrub* \| *dump* \| *dump_json* \| *dump_pools_json* \| *dump_stuck* \| *getmap* \| *ls* \| *ls-by-osd* \| *ls-by-pool* \| *ls-by-primary* \| *map* \| *repair* \| *scrub* \| *stat* ] ...
 
-| **ceph** **quorum** [ *enter* \| *exit* ]
-
 | **ceph** **quorum_status**
 
 | **ceph** **report** { *<tags>* [ *<tags>...* ] }
-
-| **ceph** **scrub**
 
 | **ceph** **status**
 
@@ -421,13 +413,13 @@ Show heap usage info (available only if compiled with tcmalloc)
 
 Usage::
 
-	ceph heap dump|start_profiler|stop_profiler|stats
+	ceph tell <name (type.id)> heap dump|start_profiler|stop_profiler|stats
 
 Subcommand ``release`` to make TCMalloc to releases no-longer-used memory back to the kernel at once. 
 
 Usage::
 
-	ceph heap release
+	ceph tell <name (type.id)> heap release
 
 Subcommand ``(get|set)_release_rate`` get or set the TCMalloc memory release rate. TCMalloc releases 
 no-longer-used memory back to the kernel gradually. the rate controls how quickly this happens. 
@@ -436,7 +428,7 @@ memory to system, 1 means wait for 1000 pages after releasing a page to system. 
 
 Usage::
 
-	ceph heap get_release_rate|set_release_rate {<val>}
+	ceph tell <name (type.id)> heap get_release_rate|set_release_rate {<val>}
 
 injectargs
 ----------
@@ -556,15 +548,6 @@ Subcommand ``stat`` summarizes monitor status.
 Usage::
 
 	ceph mon stat
-
-mon_status
-----------
-
-Reports status of monitors.
-
-Usage::
-
-	ceph mon_status
 
 mgr
 ---
@@ -1042,7 +1025,7 @@ Subcommand ``create`` creates pool.
 Usage::
 
 	ceph osd pool create <poolname> {<int[0-]>} {<int[0-]>} {replicated|erasure}
-	{<erasure_code_profile>} {<rule>} {<int>}
+	{<erasure_code_profile>} {<rule>} {<int>} {--autoscale-mode=<on,off,warn>}
 
 Subcommand ``delete`` deletes pool.
 
@@ -1464,14 +1447,9 @@ Usage::
 quorum
 ------
 
-Cause MON to enter or exit quorum.
+Cause a specific MON to enter or exit quorum.
 
 Usage::
-
-	ceph quorum enter|exit
-
-Note: this only works on the MON to which the ``ceph`` command is connected.
-If you want a specific MON to enter or exit quorum, use this syntax::
 
 	ceph tell mon.<id> quorum enter|exit
 
@@ -1495,16 +1473,6 @@ Usage::
 	ceph report {<tags> [<tags>...]}
 
 
-scrub
------
-
-Scrubs the monitor stores.
-
-Usage::
-
-	ceph scrub
-
-
 status
 ------
 
@@ -1513,16 +1481,6 @@ Shows cluster status.
 Usage::
 
 	ceph status
-
-
-sync force
-----------
-
-Forces sync of and clear monitor store.
-
-Usage::
-
-	ceph sync force {--yes-i-really-mean-it} {--i-know-what-i-am-doing}
 
 
 tell
@@ -1606,7 +1564,11 @@ Options
 
 .. option:: -w, --watch
 
-	Watch live cluster changes.
+	Watch live cluster changes on the default 'cluster' channel
+
+.. option:: -W, --watch-channel
+
+	Watch live cluster changes on any channel (cluster, audit, cephadm, or * for all)
 
 .. option:: --watch-debug
 

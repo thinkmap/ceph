@@ -27,6 +27,15 @@
 #undef dout_prefix
 #define dout_prefix *_dout << "fuse "
 
+using std::list;
+using std::map;
+using std::set;
+using std::string;
+using std::vector;
+
+using ceph::bufferlist;
+using ceph::bufferptr;
+
 // some fuse-y bits of state
 struct fs_info {
   struct fuse_args args;
@@ -1008,9 +1017,7 @@ static int os_unlink(const char *path)
   switch (f) {
   case FN_OBJECT_OMAP_VAL:
     {
-      set<string> keys;
-      keys.insert(key);
-      t.omap_rmkeys(cid, oid, keys);
+      t.omap_rmkey(cid, oid, key);
     }
     break;
 

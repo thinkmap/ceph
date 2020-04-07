@@ -4,7 +4,6 @@ import logging
 from tasks.ceph_test_case import CephTestCase
 import os
 import re
-from StringIO import StringIO
 
 from tasks.cephfs.fuse_mount import FuseMount
 
@@ -58,7 +57,7 @@ class CephFSTestCase(CephTestCase):
     # requires REQUIRE_FILESYSTEM = True
     REQUIRE_RECOVERY_FILESYSTEM = False
 
-    LOAD_SETTINGS = []
+    LOAD_SETTINGS = [] # type: ignore
 
     def setUp(self):
         super(CephFSTestCase, self).setUp()
@@ -97,9 +96,8 @@ class CephFSTestCase(CephTestCase):
 
         # To avoid any issues with e.g. unlink bugs, we destroy and recreate
         # the filesystem rather than just doing a rm -rf of files
-        self.mds_cluster.mds_stop()
-        self.mds_cluster.mds_fail()
         self.mds_cluster.delete_all_filesystems()
+        self.mds_cluster.mds_restart() # to reset any run-time configs, etc.
         self.fs = None # is now invalid!
         self.recovery_fs = None
 
@@ -130,7 +128,6 @@ class CephFSTestCase(CephTestCase):
 
         if self.REQUIRE_FILESYSTEM:
             self.fs = self.mds_cluster.newfs(create=True)
-            self.fs.mds_restart()
 
             # In case some test messed with auth caps, reset them
             for client_id in client_mount_ids:
@@ -140,7 +137,7 @@ class CephFSTestCase(CephTestCase):
                     'mon', 'allow r',
                     'osd', 'allow rw pool={0}'.format(self.fs.get_data_pool_name()))
 
-            # wait for mds restart to complete...
+            # wait for ranks to become active
             self.fs.wait_for_daemons()
 
             # Mount the requested number of clients
@@ -171,8 +168,6 @@ class CephFSTestCase(CephTestCase):
         self.configs_set = set()
 
     def tearDown(self):
-        super(CephFSTestCase, self).tearDown()
-
         self.mds_cluster.clear_firewall()
         for m in self.mounts:
             m.teardown()
@@ -182,6 +177,8 @@ class CephFSTestCase(CephTestCase):
 
         for subsys, key in self.configs_set:
             self.mds_cluster.clear_ceph_conf(subsys, key)
+
+        return super(CephFSTestCase, self).tearDown()
 
     def set_conf(self, subsys, key, value):
         self.configs_set.add((subsys, key))
@@ -228,6 +225,15 @@ class CephFSTestCase(CephTestCase):
     def _session_by_id(self, session_ls):
         return dict([(s['id'], s) for s in session_ls])
 
+    def wait_until_evicted(self, client_id, timeout=30):
+        def is_client_evicted():
+            ls = self._session_list()
+            for s in ls:
+                if s['id'] == client_id:
+                    return False
+            return True
+        self.wait_until_true(is_client_evicted, timeout)
+
     def wait_for_daemon_start(self, daemon_ids=None):
         """
         Wait until all the daemons appear in the FSMap, either assigned
@@ -253,21 +259,21 @@ class CephFSTestCase(CephTestCase):
     def delete_mds_coredump(self, daemon_id):
         # delete coredump file, otherwise teuthology.internal.coredump will
         # catch it later and treat it as a failure.
-        p = self.mds_cluster.mds_daemons[daemon_id].remote.run(args=[
-            "sudo", "sysctl", "-n", "kernel.core_pattern"], stdout=StringIO())
-        core_dir = os.path.dirname(p.stdout.getvalue().strip())
+        core_pattern = self.mds_cluster.mds_daemons[daemon_id].remote.sh(
+            "sudo sysctl -n kernel.core_pattern")
+        core_dir = os.path.dirname(core_pattern.strip())
         if core_dir:  # Non-default core_pattern with a directory in it
             # We have seen a core_pattern that looks like it's from teuthology's coredump
             # task, so proceed to clear out the core file
             log.info("Clearing core from directory: {0}".format(core_dir))
 
             # Verify that we see the expected single coredump
-            ls_proc = self.mds_cluster.mds_daemons[daemon_id].remote.run(args=[
+            ls_output = self.mds_cluster.mds_daemons[daemon_id].remote.sh([
                 "cd", core_dir, run.Raw('&&'),
                 "sudo", "ls", run.Raw('|'), "sudo", "xargs", "file"
-            ], stdout=StringIO())
+            ])
             cores = [l.partition(":")[0]
-                     for l in ls_proc.stdout.getvalue().strip().split("\n")
+                     for l in ls_output.strip().split("\n")
                      if re.match(r'.*ceph-mds.* -i +{0}'.format(daemon_id), l)]
 
             log.info("Enumerated cores: {0}".format(cores))

@@ -38,10 +38,11 @@ you may write data with one API and retrieve it with the other.
 .. toctree::
    :maxdepth: 1
 
-   Manual Install w/Civetweb <../../install/install-ceph-gateway>
+   Manual Install w/Civetweb <../../install/ceph-deploy/install-ceph-gateway>
    HTTP Frontends <frontends>
    Pool Placement and Storage Classes <placement>
    Multisite Configuration <multisite>
+   Multisite Sync Policy Configuration <multisite-sync-policy>
    Configuring Pools <pools>
    Config Reference <config-ref>
    Admin Guide <admin>
@@ -64,7 +65,9 @@ you may write data with one API and retrieve it with the other.
    Sync Modules <sync-modules>
    Bucket Notifications <notifications>
    Data Layout in RADOS <layout>
+   STS <STS>
    STS Lite <STSLite>
+   Keycloak <keycloak>
    Role <role>
    troubleshooting
    Manpage radosgw <../../man/8/radosgw>

@@ -18,6 +18,7 @@
 
 // re-include our assert to clobber boost's
 #include "include/ceph_assert.h"
+#include "include/common_fwd.h"
 #include "osd_types.h"
 #include "os/ObjectStore.h"
 #include <list>
@@ -25,7 +26,7 @@
 #ifdef WITH_SEASTAR
 #include <seastar/core/future.hh>
 #include "crimson/os/futurized_store.h"
-#include "crimson/os/cyan_collection.h"
+#include "crimson/os/cyanstore/cyan_collection.h"
 #endif
 
 constexpr auto PGLOG_INDEXED_OBJECTS          = 1 << 0;
@@ -36,8 +37,6 @@ constexpr auto PGLOG_INDEXED_ALL              = PGLOG_INDEXED_OBJECTS
                                               | PGLOG_INDEXED_CALLER_OPS 
                                               | PGLOG_INDEXED_EXTRA_CALLER_OPS 
                                               | PGLOG_INDEXED_DUPS;
-
-class CephContext;
 
 struct PGLog : DoutPrefixProvider {
   std::ostream& gen_prefix(std::ostream& out) const override {
@@ -326,6 +325,16 @@ public:
 	return true;
       }
 
+      return false;
+    }
+
+    bool has_write_since(const hobject_t &oid, const eversion_t &bound) const {
+      for (auto i = log.rbegin(); i != log.rend(); ++i) {
+	if (i->version <= bound)
+	  return false;
+	if (i->soid.get_head() == oid.get_head())
+	  return true;
+      }
       return false;
     }
 
@@ -1587,8 +1596,8 @@ public:
 
 #ifdef WITH_SEASTAR
   seastar::future<> read_log_and_missing_crimson(
-    ceph::os::FuturizedStore &store,
-    ceph::os::CollectionRef ch,
+    crimson::os::FuturizedStore &store,
+    crimson::os::CollectionRef ch,
     const pg_info_t &info,
     ghobject_t pgmeta_oid
     ) {
@@ -1600,8 +1609,8 @@ public:
 
   template <typename missing_type>
   struct FuturizedStoreLogReader {
-    ceph::os::FuturizedStore &store;
-    ceph::os::CollectionRef ch;
+    crimson::os::FuturizedStore &store;
+    crimson::os::CollectionRef ch;
     const pg_info_t &info;
     IndexedLog &log;
     missing_type &missing;
@@ -1618,23 +1627,24 @@ public:
 
     std::optional<std::string> next;
 
-    void process_entry(const std::pair<std::string, ceph::bufferlist> &p) {
-      if (p.first[0] == '_')
+    void process_entry(crimson::os::FuturizedStore::OmapIteratorRef &p) {
+      if (p->key()[0] == '_')
 	return;
-      ceph::bufferlist bl = p.second;//Copy bufferlist before creating iterator
+      //Copy bufferlist before creating iterator
+      ceph::bufferlist bl = p->value();
       auto bp = bl.cbegin();
-      if (p.first == "divergent_priors") {
+      if (p->key() == "divergent_priors") {
 	decode(divergent_priors, bp);
 	ldpp_dout(dpp, 20) << "read_log_and_missing " << divergent_priors.size()
 			   << " divergent_priors" << dendl;
 	ceph_assert("crimson shouldn't have had divergent_priors" == 0);
-      } else if (p.first == "can_rollback_to") {
+      } else if (p->key() == "can_rollback_to") {
 	decode(on_disk_can_rollback_to, bp);
-      } else if (p.first == "rollback_info_trimmed_to") {
+      } else if (p->key() == "rollback_info_trimmed_to") {
 	decode(on_disk_rollback_info_trimmed_to, bp);
-      } else if (p.first == "may_include_deletes_in_missing") {
+      } else if (p->key() == "may_include_deletes_in_missing") {
 	missing.may_include_deletes = true;
-      } else if (p.first.substr(0, 7) == string("missing")) {
+      } else if (p->key().substr(0, 7) == string("missing")) {
 	hobject_t oid;
 	pg_missing_item item;
 	decode(oid, bp);
@@ -1643,7 +1653,7 @@ public:
 	  ceph_assert(missing.may_include_deletes);
 	}
 	missing.add(oid, std::move(item));
-      } else if (p.first.substr(0, 4) == string("dup_")) {
+      } else if (p->key().substr(0, 4) == string("dup_")) {
 	pg_log_dup_t dup;
 	decode(dup, bp);
 	if (!dups.empty()) {
@@ -1670,18 +1680,18 @@ public:
       missing.may_include_deletes = false;
 
       auto reader = std::unique_ptr<FuturizedStoreLogReader>(this);
-      return seastar::repeat(
-	[this]() {
-	  return store.omap_get_values(ch, pgmeta_oid, next).then(
-	    [this](
-	      bool done, ceph::os::FuturizedStore::omap_values_t values) {
-	      for (auto &&p : values) {
-		process_entry(p);
-	      }
-	      return done ? seastar::stop_iteration::yes
-		: seastar::stop_iteration::no;
-	    });
-	}).then([this, reader{std::move(reader)}]() {
+      return store.get_omap_iterator(ch, pgmeta_oid).then([this](auto iter) {
+	return seastar::repeat([this, iter]() mutable {
+	  if (!iter->valid()) {
+	    return seastar::make_ready_future<seastar::stop_iteration>(
+		      seastar::stop_iteration::yes);
+	  }
+	  process_entry(iter);
+	  return iter->next().then([](int) {
+	    return seastar::stop_iteration::no;
+	  });
+	});
+      }).then([this, reader{std::move(reader)}]() {
           log = IndexedLog(
 	     info.last_update,
 	     info.log_tail,
@@ -1696,8 +1706,8 @@ public:
 
   template <typename missing_type>
   static seastar::future<> read_log_and_missing_crimson(
-    ceph::os::FuturizedStore &store,
-    ceph::os::CollectionRef ch,
+    crimson::os::FuturizedStore &store,
+    crimson::os::CollectionRef ch,
     const pg_info_t &info,
     IndexedLog &log,
     missing_type &missing,

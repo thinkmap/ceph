@@ -14,6 +14,7 @@
 #include <atomic>
 
 #include "include/ceph_assert.h"
+#include "include/common_fwd.h"
 
 #include "PGLog.h"
 #include "PGStateUtils.h"
@@ -280,6 +281,8 @@ public:
     virtual void schedule_renew_lease(epoch_t plr, ceph::timespan delay) = 0;
     virtual void queue_check_readable(epoch_t lpr, ceph::timespan delay) = 0;
     virtual void recheck_readable() = 0;
+
+    virtual unsigned get_target_pg_log_entries() const = 0;
 
     // ============ Flush state ==================
     /**
@@ -743,7 +746,6 @@ public:
     typedef boost::mpl::list <
       boost::statechart::custom_reaction< ActMap >,
       boost::statechart::custom_reaction< MNotifyRec >,
-      boost::statechart::transition< NeedActingChange, WaitActingChange >,
       boost::statechart::custom_reaction<SetForceRecovery>,
       boost::statechart::custom_reaction<UnsetForceRecovery>,
       boost::statechart::custom_reaction<SetForceBackfill>,
@@ -937,9 +939,14 @@ public:
 
   struct WaitLocalBackfillReserved : boost::statechart::state< WaitLocalBackfillReserved, Active >, NamedState {
     typedef boost::mpl::list<
-      boost::statechart::transition< LocalBackfillReserved, WaitRemoteBackfillReserved >
+      boost::statechart::transition< LocalBackfillReserved, WaitRemoteBackfillReserved >,
+      boost::statechart::custom_reaction< RemoteBackfillReserved >
       > reactions;
     explicit WaitLocalBackfillReserved(my_context ctx);
+    boost::statechart::result react(const RemoteBackfillReserved& evt) {
+      /* no-op */
+      return discard_event();
+    }
     void exit();
   };
 
@@ -1253,6 +1260,7 @@ public:
       boost::statechart::custom_reaction< MLogRec >,
       boost::statechart::custom_reaction< GotLog >,
       boost::statechart::custom_reaction< AdvMap >,
+      boost::statechart::transition< NeedActingChange, WaitActingChange >,
       boost::statechart::transition< IsIncomplete, Incomplete >
       > reactions;
     boost::statechart::result react(const AdvMap&);
@@ -1453,7 +1461,7 @@ public:
   set<pg_shard_t> might_have_unfound;
 
   bool deleting = false;  /// true while in removing or OSD is shutting down
-  atomic<bool> deleted = {false}; /// true once deletion complete
+  std::atomic<bool> deleted = {false}; /// true once deletion complete
 
   MissingLoc missing_loc; ///< information about missing objects
 
@@ -1554,7 +1562,8 @@ public:
   bool recoverable(const vector<int> &want) const;
   bool choose_acting(pg_shard_t &auth_log_shard,
 		     bool restrict_to_up_acting,
-		     bool *history_les_bound);
+		     bool *history_les_bound,
+		     bool request_pg_temp_change_only = false);
 
   bool search_for_missing(
     const pg_info_t &oinfo, const pg_missing_t &omissing,
@@ -1763,13 +1772,25 @@ public:
     std::optional<eversion_t> trim_to,
     std::optional<eversion_t> roll_forward_to);
 
+  void append_log_with_trim_to_updated(
+    std::vector<pg_log_entry_t>&& log_entries,
+    eversion_t roll_forward_to,
+    ObjectStore::Transaction &t,
+    bool transaction_applied,
+    bool async) {
+    update_trim_to();
+    append_log(std::move(log_entries), pg_trim_to, roll_forward_to,
+	min_last_complete_ondisk, t, transaction_applied, async);
+  }
+
   /**
    * Updates local log to reflect new write from primary.
    */
   void append_log(
-    const vector<pg_log_entry_t>& logv,
+    vector<pg_log_entry_t>&& logv,
     eversion_t trim_to,
     eversion_t roll_forward_to,
+    eversion_t min_last_complete_ondisk,
     ObjectStore::Transaction &t,
     bool transaction_applied,
     bool async);
@@ -1998,6 +2019,7 @@ public:
 
   void proc_lease(const pg_lease_t& l);
   void proc_lease_ack(int from, const pg_lease_ack_t& la);
+  void proc_renew_lease();
 
   pg_lease_ack_t get_lease_ack() {
     return pg_lease_ack_t(readable_until_ub_from_primary);
@@ -2199,6 +2221,15 @@ public:
   bool needs_backfill() const;
 
   /**
+   * Returns whether a particular object can be safely read on this replica
+   */
+  bool can_serve_replica_read(const hobject_t &hoid) {
+    ceph_assert(!is_primary());
+    return !pg_log.get_log().has_write_since(
+      hoid, get_min_last_complete_ondisk());
+  }
+
+  /**
    * Returns whether all peers which might have unfound objects have been
    * queried or marked lost.
    */
@@ -2251,6 +2282,10 @@ public:
 
   eversion_t get_last_update_applied() const {
     return last_update_applied;
+  }
+
+  eversion_t get_last_update_ondisk() const {
+    return last_update_ondisk;
   }
 
   bool debug_has_dirty_state() const {
